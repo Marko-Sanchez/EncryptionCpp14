@@ -6,7 +6,8 @@ int main(int argc, char* argv[])
     if( argc < 2)
     {
         Encrypt e;
-        e.greeting();
+        // Test encrypt default code:
+        e.encrypt();
 
         return EXIT_SUCCESS;
     }
