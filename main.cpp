@@ -3,14 +3,37 @@
 
 int main(int argc, char* argv[])
 {
-    if( argc < 2)
+    // Encryption wrapper:
+    EncryptionWrapper ew;
+
+    if(argc < 2)
     {
-        Encrypt e;
-        // Test encrypt default code:
-        e.encrypt();
+        // Hello world output:
+        ew.greeting();
 
         return EXIT_SUCCESS;
     }
-    std::cout << argv[1] << std::endl;
+
+    // Hash password:
+    std::string password{argv[1]};
+    std::string hash{ew.passwordEncryption(password)};
+
+    // Ouput password and it's hash:
+    std::cout << password << std::endl;
+    std::cout << hash << std::endl;
+
+    if(ew.passwordChecker(password, hash))
+        std::cout << "Passwords matches current hash." << std::endl;
+
+
+    // Compare an old hash of current password to check compatability:
+    if(argc >= 3 and true)
+    {
+        std::string oldHash{argv[2]};
+
+        std::cout << oldHash << std::endl;
+        std::cout << "Password matches with old hash: "<< ew.passwordChecker(password, oldHash) << std::endl;
+    }
+
     return EXIT_SUCCESS;
 }

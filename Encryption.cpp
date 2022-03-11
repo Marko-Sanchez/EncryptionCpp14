@@ -1,58 +1,48 @@
 #include "Encryption.hpp"
 #include <string>
 #include <iostream>
-#include <iomanip>
 
-#include <botan/aead.h>
-#include <botan/system_rng.h>
-#include <botan/hex.h>
+#include <botan/bcrypt.h>
+#include <botan/auto_rng.h>
 
-struct Encrypt::Impl
+struct EncryptionWrapper::Impl
 {
     std::string greeting = "Hello World, from inside Class\n";
 };
 
-Encrypt::Encrypt()
+EncryptionWrapper::EncryptionWrapper()
 : pImpl(std::make_unique<Impl>())
 {}
 
-Encrypt::~Encrypt() = default;
+EncryptionWrapper::~EncryptionWrapper() = default;
 
-void Encrypt::greeting()
+void EncryptionWrapper::greeting()
 {
     std::cout << pImpl->greeting;
 }
 
-void Encrypt::encrypt()
+/*
+ * Takes in a const string& of at most 72 characters, generats a bcrypt hash.
+ * @params: password: user password.
+ * @returns: hashed password.
+ */
+std::string EncryptionWrapper::passwordEncryption(const std::string& password)const
 {
-   using namespace Botan;
-   std::cout << "Encrypting ..." << std::endl;
+   Botan::AutoSeeded_RNG rng;    // Random number generator:
+   uint16_t work_factor = 12;    // How much work to do to prevent guessing attacks:
+   char version = 'a';
 
-   const std::string chosen_aead_mode = "ChaCha20Poly1305";
+   std::string passwordHash{Botan::generate_bcrypt(password, rng, work_factor, version)};
 
-   // a key from somewhere
-   auto key = system_rng().random_vec(32);
+   return passwordHash;
+}
 
-    // data from somewhere
-   const uint8_t ptext[32] = { 0 };
-   const size_t ptext_len = sizeof(ptext);
-   secure_vector<uint8_t> buf(ptext, ptext + ptext_len);
-
-   // create the aead object
-   std::unique_ptr<AEAD_Mode> aead = AEAD_Mode::create_or_throw(chosen_aead_mode, ENCRYPTION);
-
-   // set key
-   aead->set_key(key);
-
-   // chose a random nonce of whatever length aead wants
-   auto nonce = system_rng().random_vec(aead->default_nonce_length());
-
-   // begin processing using nonce
-   aead->start(nonce);
-
-   // process the entire message in buf in one go, appending tag
-   aead->finish(buf);
-
-   // output nonce and ciphertext
-   std::cout << hex_encode(nonce) << hex_encode(buf) << "\n";
+/* Checks if password and bcrypt hash match.
+ * @params: password{const string&} users password.
+ *          hash{const string&} potential password hash.
+ * @returns: true if match
+ */
+bool EncryptionWrapper::passwordChecker(const std::string& password, const std::string& hash)const
+{
+   return Botan::check_bcrypt(password, hash);
 }
