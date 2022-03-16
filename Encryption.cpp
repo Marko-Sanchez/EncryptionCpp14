@@ -1,9 +1,13 @@
 #include "Encryption.hpp"
 #include <string>
 #include <iostream>
+#include <fstream>
+#include <ctime>
 
 #include <botan/bcrypt.h>
+#include <botan/aead.h>
 #include <botan/auto_rng.h>
+#include <botan/hex.h>
 
 struct EncryptionWrapper::Impl
 {
@@ -32,6 +36,8 @@ std::string EncryptionWrapper::passwordEncryption(const std::string& password)co
    uint16_t work_factor = 12;    // How much work to do to prevent guessing attacks:
    char version = 'a';
 
+   logAndProccess(__PRETTY_FUNCTION__);
+
    std::string passwordHash{Botan::generate_bcrypt(password, rng, work_factor, version)};
 
    return passwordHash;
@@ -44,5 +50,29 @@ std::string EncryptionWrapper::passwordEncryption(const std::string& password)co
  */
 bool EncryptionWrapper::passwordChecker(const std::string& password, const std::string& hash)const
 {
+   logAndProccess(__PRETTY_FUNCTION__);
+
    return Botan::check_bcrypt(password, hash);
+}
+
+/*
+ * Takes in a universal refrences and logs param.
+ * @warning: not thread safe.
+ * @params: name of subject to be logged.
+ * @retuns: writes current date and subject to file.
+ */
+template<typename T>
+void EncryptionWrapper::logAndProccess(T&& param)const
+{
+   auto now = std::chrono::system_clock::now();
+   auto time = std::chrono::system_clock::to_time_t(now);
+
+   std::ofstream fs;
+   fs.open("functionLogs", std::fstream::out | std::ofstream::app);
+
+   // Format and write to buffer:
+   fs << ctime(&time) << ' ' << param << '\n';
+
+   // Write to file and close:
+   fs.close();
 }
