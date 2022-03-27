@@ -2,7 +2,7 @@ CC = g++
 LIBFLAGS = $(shell pkg-config --libs botan-2)
 CPPFLAGS = -g -std=c++17 -Wall -Wextra -Wpedantic -Wshadow -O3 $(shell pkg-config --cflags botan-2)
 DEPS = Encryption.hpp
-OBJ = main.o Encryption.o
+OBJ = test.o Encryption.o
 TARGET = EncryptionWrapper
 
 %.o:%.c $(DEPS)
