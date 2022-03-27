@@ -1,14 +1,43 @@
 #include "Encryption.hpp"
 
 #include <botan/bcrypt.h>
+#include <botan/aead.h>
 #include <botan/x509_key.h>
 #include <botan/pkcs8.h>
 #include <botan/auto_rng.h>
 #include <botan/rsa.h>
-#include <botan/botan.h>
-#include <botan/pk_keys.h>
 #include <botan/pubkey.h>
 #include <botan/hex.h>
+#include <botan/data_src.h>
+
+
+/*
+ * Holds information used for encrypting a message.
+ * @values:
+ *          symmetricKey: encrypted sym key used for AEAD of cipher text.
+ *          nonce: one time random number used in encryption of cipher text.
+ */
+struct EncryptionWrapper::EncryptionInfo
+{
+   std::vector<uint8_t> symmetricKey;
+   std::vector<uint8_t> nonce;
+};
+
+/* Initialize EncryptionInfo struct */
+EncryptionWrapper::EncryptionWrapper()
+:eInfo(std::make_unique<EncryptionInfo>())
+{}
+
+/* Needed for proper struct pointer deletion call */
+EncryptionWrapper::~EncryptionWrapper() = default;
+
+/*
+ * Toggle logging function calls.
+ */
+void EncryptionWrapper::logging()
+{
+   logFunctions = !logFunctions;
+}
 
 /*
  * Takes in a const string& of at most 72 characters, generates a bcrypt hash.
@@ -17,15 +46,14 @@
  */
 std::string EncryptionWrapper::passwordEncryption(const std::string& password)const
 {
+   if(logFunctions)
+      logAndProccess(__PRETTY_FUNCTION__);
+
    Botan::AutoSeeded_RNG rng;    // Random number generator:
    uint16_t work_factor = 12;    // How much work to do to prevent guessing attacks:
    char version = 'a';
 
-   logAndProccess(__PRETTY_FUNCTION__);
-
-   std::string passwordHash{Botan::generate_bcrypt(password, rng, work_factor, version)};
-
-   return passwordHash;
+   return std::string{Botan::generate_bcrypt(password, rng, work_factor, version)};
 }
 
 /* Checks if password and bcrypt hash match.
@@ -35,7 +63,9 @@ std::string EncryptionWrapper::passwordEncryption(const std::string& password)co
  */
 bool EncryptionWrapper::passwordChecker(const std::string& password, const std::string& hash)const
 {
-   logAndProccess(__PRETTY_FUNCTION__);
+
+   if(logFunctions)
+      logAndProccess(__PRETTY_FUNCTION__);
 
    return Botan::check_bcrypt(password, hash);
 }
@@ -44,8 +74,11 @@ bool EncryptionWrapper::passwordChecker(const std::string& password, const std::
  * Creates RSA private and public key.
  * @returns: {vector<string>} containing private and public RSA key's.
  */
-std::vector<std::string> EncryptionWrapper::generatePKey()
+std::vector<std::string> EncryptionWrapper::generatePairKey() noexcept
 {
+   if(logFunctions)
+      logAndProccess(__PRETTY_FUNCTION__);
+
    Botan::AutoSeeded_RNG rng;
    Botan::RSA_PrivateKey keyPair(rng, 1024);
 
@@ -56,45 +89,74 @@ std::vector<std::string> EncryptionWrapper::generatePKey()
 }
 
 /*
- * Encrypts message using EME1(SHA-256).
+ * Encrypts message using authenticated symmetric key, then encrypts
+ * symmetric key using freinds public key.
  * @params: plaintext{const string&} content to be encrypted.
- *          key{const string&} callees public key.
+ *          key{const string&} freinds public key.
  * @returns: outputs cipher text.
  */
-std::string EncryptionWrapper::messageEncryption(const std::string& plaintext, const std::string& publickey)
+std::string EncryptionWrapper::messageEncryption(const std::string& plaintext, const std::string& freinds_publickey)
 {
+
+   if(logFunctions)
+      logAndProccess(__PRETTY_FUNCTION__);
+
+   auto symCipher = Botan::AEAD_Mode::create_or_throw("AES-256/GCM", Botan::ENCRYPTION);
+
+   // Create a random nonce:
    Botan::AutoSeeded_RNG rng;
-   Botan::DataSource_Memory keyPub(publickey);
+
+   rng.random_vec(eInfo->nonce, symCipher->default_nonce_length());
+   const auto symKey = rng.random_vec(symCipher->minimum_keylength());
+
+   // Convert plain text to uint8_t:
+   Botan::secure_vector<uint8_t> ciphertext(plaintext.data(), plaintext.data() + plaintext.length());
+
+   // Encrypt / authenticate the data symmetrically:
+   symCipher->set_key(symKey);
+   symCipher->start(eInfo->nonce);
+   symCipher->finish(ciphertext);
 
    // Grab X509::PEM encoded key and create public key object:
+   std::vector<uint8_t> keyPub(freinds_publickey.data(), freinds_publickey.data() + freinds_publickey.length());
    std::unique_ptr<Botan::Public_Key> kp(Botan::X509::load_key(keyPub));
-   Botan::PK_Encryptor_EME enc(*kp, rng, "EME1(SHA-256)");
 
-   // Convert string to uint8_t and encrypt:
-   std::vector<uint8_t> pt(plaintext.data(), plaintext.data() + plaintext.length());
-   std::vector<uint8_t> ciphertext = enc.encrypt(pt, rng);
+   // Encrypt symmetric key:
+   Botan::PK_Encryptor_EME enc(*kp, rng, "EME-OAEP(SHA-256,MGF1)");
+   eInfo->symmetricKey = enc.encrypt(symKey, rng);
+
 
    return Botan::hex_encode(ciphertext);
 }
 
 /*
- * Decrypts recieved message using EME1(SHA-256)
+ * Decrypts users symmetric key using private key, which will then decrypt
+ * cipher text using authenitcated encryption.
  * @params: ciphertext{const string&} hex encoded string to e decrypted.
  *          privateKey{const string&} users private key.
  * @returns: decrypted text.
  */
 std::string EncryptionWrapper::messageDecryption(const std::string& ciphertext, const std::string& privatekey)
 {
-   Botan::AutoSeeded_RNG rng;
-   Botan::DataSource_Memory keyPriv(privatekey);
+   if(logFunctions)
+      logAndProccess(__PRETTY_FUNCTION__);
+
+   Botan::secure_vector<uint8_t> plaintext(Botan::hex_decode_locked(ciphertext));
 
    // Grab PKS8::PEM encoded key and create a private key object:
+   Botan::DataSource_Memory keyPriv(privatekey);
    std::unique_ptr<Botan::Private_Key> kp(Botan::PKCS8::load_key(keyPriv));
-   Botan::PK_Decryptor_EME dec(*kp, rng, "EME1(SHA-256)");
+
+   // Decrypt symmetric key:
+   Botan::AutoSeeded_RNG rng;
+   Botan::PK_Decryptor_EME asymCipher(*kp, rng, "EME-OAEP(SHA-256,MGF1)");
+   const auto symKey = asymCipher.decrypt(eInfo->symmetricKey);
 
    // Grab hex_encode'd string, decode, and decrypt:
-   Botan::secure_vector<uint8_t> ct(Botan::hex_decode_locked(ciphertext));
-   std::vector<uint8_t> temptext = Botan::unlock(dec.decrypt(ct));
+   auto symCipher = Botan::AEAD_Mode::create_or_throw("AES-256/GCM", Botan::DECRYPTION);
+   symCipher->set_key(symKey);
+   symCipher->start(eInfo->nonce);
+   symCipher->finish(plaintext);
 
-   return std::string(begin(temptext), end(temptext));
+   return std::string(begin(plaintext), end(plaintext));
 }

@@ -11,12 +11,18 @@ class EncryptionWrapper{
 
     public:
 
+        /* Constructor */
+        EncryptionWrapper();
+
+        /* Destructor */
+        ~EncryptionWrapper();
+
         /* Create user, encrypts password and stores it in a file */
         template<typename T, typename K>
         void createUser(T&& username, K&& plainPassword);
 
         /* Generate a private key */
-        std::vector<std::string> generatePKey();
+        std::vector<std::string> generatePairKey()noexcept;
 
         /* Encrypt a users password */
         std::string passwordEncryption(const std::string& password)const;
@@ -30,11 +36,20 @@ class EncryptionWrapper{
         /* Decrypts recieved message */
         std::string messageDecryption(const std::string& ciphertext, const std::string& privatekey);
 
+        /* Toggle optional logging */
+        void logging();
+
     private:
+
+        struct EncryptionInfo;
+        std::unique_ptr<EncryptionInfo> eInfo;
 
         /* Log function calls */
         template<typename T>
         void logAndProccess(T&& param)const;
+
+        /* Toggle optional logging */
+        bool logFunctions{false};
 };
 
                /*    Template Functions   */
