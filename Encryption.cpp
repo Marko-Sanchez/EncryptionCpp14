@@ -10,30 +10,15 @@
 #include <botan/hex.h>
 #include <botan/data_src.h>
 
-
-/*
- * Holds information used for encrypting a message.
- * @values:
- *          symmetricKey: encrypted sym key used for AEAD of cipher text.
- *          nonce: one time random number used in encryption of cipher text.
- */
-struct EncryptionWrapper::EncryptionInfo
-{
-   std::vector<uint8_t> symmetricKey;
-   std::vector<uint8_t> nonce;
-};
-
-/* Initialize EncryptionInfo struct */
+/* Initialize eData with a shared pointer to 'EncryptionData' */
 EncryptionWrapper::EncryptionWrapper()
-:eInfo(std::make_unique<EncryptionInfo>())
+   :eData(std::make_unique<EncryptionData>())
 {}
 
 /* Needed for proper struct pointer deletion call */
 EncryptionWrapper::~EncryptionWrapper() = default;
 
-/*
- * Toggle logging function calls.
- */
+/* Toggle logging function calls. */
 void EncryptionWrapper::logging()
 {
    logFunctions = !logFunctions;
@@ -106,7 +91,7 @@ std::string EncryptionWrapper::messageEncryption(const std::string& plaintext, c
    // Create a random nonce:
    Botan::AutoSeeded_RNG rng;
 
-   rng.random_vec(eInfo->nonce, symCipher->default_nonce_length());
+   rng.random_vec(eData->nonce, symCipher->default_nonce_length());
    const auto symKey = rng.random_vec(symCipher->minimum_keylength());
 
    // Convert plain text to uint8_t:
@@ -114,7 +99,7 @@ std::string EncryptionWrapper::messageEncryption(const std::string& plaintext, c
 
    // Encrypt / authenticate the data symmetrically:
    symCipher->set_key(symKey);
-   symCipher->start(eInfo->nonce);
+   symCipher->start(eData->nonce);
    symCipher->finish(ciphertext);
 
    // Grab X509::PEM encoded key and create public key object:
@@ -123,7 +108,7 @@ std::string EncryptionWrapper::messageEncryption(const std::string& plaintext, c
 
    // Encrypt symmetric key:
    Botan::PK_Encryptor_EME enc(*kp, rng, "EME-OAEP(SHA-256,MGF1)");
-   eInfo->symmetricKey = enc.encrypt(symKey, rng);
+   eData->symmetricKey = enc.encrypt(symKey, rng);
 
 
    return Botan::hex_encode(ciphertext);
@@ -141,6 +126,13 @@ std::string EncryptionWrapper::messageDecryption(const std::string& ciphertext, 
    if(logFunctions)
       logAndProccess(__PRETTY_FUNCTION__);
 
+   // Check that user has actually set freindly pointer:
+   if(feData == nullptr)
+   {
+      std::cerr << "\033[1;31mPlease Remeber to set ciphers nonce and symmetric key\033[0m\n" <<std::endl;
+      return "";
+   }
+
    Botan::secure_vector<uint8_t> plaintext(Botan::hex_decode_locked(ciphertext));
 
    // Grab PKS8::PEM encoded key and create a private key object:
@@ -150,13 +142,56 @@ std::string EncryptionWrapper::messageDecryption(const std::string& ciphertext, 
    // Decrypt symmetric key:
    Botan::AutoSeeded_RNG rng;
    Botan::PK_Decryptor_EME asymCipher(*kp, rng, "EME-OAEP(SHA-256,MGF1)");
-   const auto symKey = asymCipher.decrypt(eInfo->symmetricKey);
+   const auto symKey = asymCipher.decrypt(feData->symmetricKey);
 
    // Grab hex_encode'd string, decode, and decrypt:
    auto symCipher = Botan::AEAD_Mode::create_or_throw("AES-256/GCM", Botan::DECRYPTION);
    symCipher->set_key(symKey);
-   symCipher->start(eInfo->nonce);
+   symCipher->start(feData->nonce);
    symCipher->finish(plaintext);
 
+   // Clear data from freindly container:
+   feData.reset();
+
    return std::string(begin(plaintext), end(plaintext));
+}
+
+/*
+ * @returns: eData{unique_ptr<EncryptionData>} current ciphers encryption data.
+ */
+std::unique_ptr<EncryptionData> EncryptionWrapper::getEncryptionData()
+{
+   return std::move(eData);
+}
+
+/*
+ * Sets 'EncryptionData' used in encryption of cipher text, in-order to be decrypted.
+ * @params: _feData{unique_ptr<EncryptionData>} struct containing cipher's encryption data.
+ */
+void EncryptionWrapper::setEncryptionData(std::unique_ptr<EncryptionData> _feData)
+{
+   feData = std::move(_feData);
+}
+
+/*
+ * Sets encryption data from cipher text.
+ * @params: symmetric_key{string&&} key used in encryption of text.
+ *          nonce{string&&} random number used in encryption.
+ */
+void EncryptionWrapper::setFEdata(std::string&& symmetric_key, std::string&& nonce)
+{
+   feData = std::make_unique<EncryptionData>();
+
+   feData->symmetricKey = std::vector<uint8_t>(symmetric_key.data(), symmetric_key.data() + symmetric_key.length());
+   feData->nonce = std::vector<uint8_t>(nonce.data(), nonce.data() + nonce.length());
+}
+
+/*
+ * Sets encryption data from cipher text.
+ * @params: symmetric_key{string&&} key used in encryption of text.
+ *          nonce{string&&} random number used in encryption.
+ */
+void EncryptionWrapper::setFEdata(std::vector<uint8_t>&& symmetric_key, std::vector<uint8_t>&& nonce)
+{
+   feData = std::make_unique<EncryptionData>(symmetric_key, nonce);
 }

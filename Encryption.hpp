@@ -7,6 +7,30 @@
 #include <chrono>
 #include <ctime>
 
+/*
+ * Holds information used for encrypting a message.
+ * @values:
+ *          symmetricKey: encrypted sym key used for AEAD of cipher text.
+ *          nonce: one time random number used in encryption of cipher text.
+ */
+struct EncryptionData
+{
+
+   EncryptionData() = default;
+
+   ~EncryptionData() = default;
+
+   template<typename T>
+   EncryptionData(T&& _key, T&& _nonce)
+      :symmetricKey(std::forward<T>(_key)),
+       nonce(std::forward<T>(_nonce))
+   {}
+
+   std::vector<uint8_t> ciphertext;    // Encrypted plain text:
+   std::vector<uint8_t> symmetricKey;  // Key used in encryption:
+   std::vector<uint8_t> nonce;         // Random number used in encryption:
+};
+
 class EncryptionWrapper{
 
     public:
@@ -36,13 +60,26 @@ class EncryptionWrapper{
         /* Decrypts recieved message */
         std::string messageDecryption(const std::string& ciphertext, const std::string& privatekey);
 
+        /* Sets encryption data created from cipher text */
+        void setFEdata(std::string&& symmetric_key, std::string&& nonce);
+        void setFEdata(std::vector<uint8_t>&& symmetric_key, std::vector<uint8_t>&& nonce);
+
+        /* Grabs symmetric key from most recent cipher text */
+        std::unique_ptr<EncryptionData> getEncryptionData();
+
+        /* Sets data used in encryption of cipher text, to be decrypted */
+        void setEncryptionData(std::unique_ptr<EncryptionData> _feData);
+
         /* Toggle optional logging */
         void logging();
 
     private:
 
-        struct EncryptionInfo;
-        std::unique_ptr<EncryptionInfo> eInfo;
+        /* Container to hold data from encryption */
+        std::unique_ptr<EncryptionData> eData;
+
+        /* Encryption data from cipher text to be decrypted */
+        std::unique_ptr<EncryptionData> feData;
 
         /* Log function calls */
         template<typename T>

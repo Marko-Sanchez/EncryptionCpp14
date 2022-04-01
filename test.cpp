@@ -7,7 +7,7 @@ int main(int argc, char* argv[])
     EncryptionWrapper ew;
 
     // Hash password:
-    std::string password{"myPassword"};
+    std::string password{"Stacy you smell"};
     std::string hash{ew.passwordEncryption(password)};
 
     // Ouput password and it's hash:
@@ -40,6 +40,9 @@ int main(int argc, char* argv[])
 
     std::string ciphertext{ew.messageEncryption(plaintext, public_key)};
 
+    // Pass EncryptionData to self:
+    ew.setEncryptionData(ew.getEncryptionData());
+
     std::string text{ew.messageDecryption(ciphertext, private_key)};
 
 
@@ -51,7 +54,7 @@ int main(int argc, char* argv[])
     ew.createUser(std::string("Marko"), std::string("mountainDew"));
     std::cout << std::endl;
 
-#if 0
+#if 1
      /* Testing pusedo-comunication between two individuals */
 
     EncryptionWrapper ewA;      // Alice's Wrapper:
@@ -73,6 +76,10 @@ int main(int argc, char* argv[])
     // Alice encrypts message to send to Bob:
     std::string AliceCipherText{ewA.messageEncryption(AliceMessage, BobsPublicKey)};
 
+    // Pass encryption data:
+    std::unique_ptr<EncryptionData> Adata = ewA.getEncryptionData();
+    ewB.setEncryptionData(std::move(Adata));
+
     // Bob decrypts Alice message:
     std::string AlicePlainText{ewB.messageDecryption(AliceCipherText, BobsKeypair[0])};
     std::cout << AlicePlainText << std::endl;
@@ -80,12 +87,15 @@ int main(int argc, char* argv[])
     // Bob responds:
     std::string BobCipherText{ewB.messageEncryption(BobsMessage, AlicePublicKey)};
 
+    // pass data: different method.
+    auto Bdata = ewB.getEncryptionData();
+
+    ewA.setFEdata(std::move(Bdata->symmetricKey), std::move(Bdata->nonce));
+
     // Alice decrypts Bob's message:
     std::string BobPlainText{ewA.messageDecryption(BobCipherText, AliceKeypair[0])};
     std::cout << BobPlainText << std::endl;
 
-    // Nonce needs to be exhanged inorder to work:
-    // And also the symmetricKey which is hashed:
 #endif
 
     return EXIT_SUCCESS;
