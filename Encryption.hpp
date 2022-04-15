@@ -22,8 +22,8 @@ struct EncryptionData
 
    template<typename T>
    EncryptionData(T&& _key, T&& _nonce)
-      :symmetricKey(std::forward<T>(_key)),
-       nonce(std::forward<T>(_nonce))
+      :symmetricKey( std::forward<T>(_key) ),
+       nonce( std::forward<T>(_nonce) )
    {}
 
    std::vector<uint8_t> ciphertext;    // Encrypted plain text:
@@ -46,7 +46,7 @@ class EncryptionWrapper{
         void createUser(T&& username, K&& plainPassword);
 
         /* Generate a private key */
-        std::vector<std::string> generatePairKey()noexcept;
+        std::vector<std::string> generateKeyPair()noexcept;
 
         /* Encrypt a users password */
         std::string passwordEncryption(const std::string& password)const;

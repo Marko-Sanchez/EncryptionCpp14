@@ -59,7 +59,7 @@ bool EncryptionWrapper::passwordChecker(const std::string& password, const std::
  * Creates RSA private and public key.
  * @returns: {vector<string>} containing private and public RSA key's.
  */
-std::vector<std::string> EncryptionWrapper::generatePairKey() noexcept
+std::vector<std::string> EncryptionWrapper::generateKeyPair() noexcept
 {
    if(logFunctions)
       logAndProccess(__PRETTY_FUNCTION__);
@@ -130,7 +130,7 @@ std::string EncryptionWrapper::messageDecryption(const std::string& ciphertext, 
    if(feData == nullptr)
    {
       std::cerr << "\033[1;31mPlease Remeber to set ciphers nonce and symmetric key\033[0m\n" <<std::endl;
-      return "";
+      throw std::invalid_argument("Missing Encryption data");
    }
 
    Botan::secure_vector<uint8_t> plaintext(Botan::hex_decode_locked(ciphertext));
@@ -142,13 +142,26 @@ std::string EncryptionWrapper::messageDecryption(const std::string& ciphertext, 
    // Decrypt symmetric key:
    Botan::AutoSeeded_RNG rng;
    Botan::PK_Decryptor_EME asymCipher(*kp, rng, "EME-OAEP(SHA-256,MGF1)");
-   const auto symKey = asymCipher.decrypt(feData->symmetricKey);
 
-   // Grab hex_encode'd string, decode, and decrypt:
-   auto symCipher = Botan::AEAD_Mode::create_or_throw("AES-256/GCM", Botan::DECRYPTION);
-   symCipher->set_key(symKey);
-   symCipher->start(feData->nonce);
-   symCipher->finish(plaintext);
+   // Throw user friendly error with more info:
+   try
+   {
+
+      const auto symKey = asymCipher.decrypt(feData->symmetricKey);
+
+      // Grab hex_encode'd string, decode, and decrypt:
+      auto symCipher = Botan::AEAD_Mode::create_or_throw("AES-256/GCM", Botan::DECRYPTION);
+      symCipher->set_key(symKey);
+      symCipher->start(feData->nonce);
+      symCipher->finish(plaintext);
+
+   }
+
+   catch(Botan::Decoding_Error& exception)
+   {
+      std::cerr << "\033[1;31mError decrypting cipher text\033[0m" << std::endl;
+      throw std::invalid_argument("Incorrect symmetric or private key used");
+   }
 
    // Clear data from freindly container:
    feData.reset();

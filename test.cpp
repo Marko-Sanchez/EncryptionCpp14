@@ -29,7 +29,7 @@ int main(int argc, char* argv[])
     }
 
     // Generate private key:
-    std::vector<std::string> keyPair{ew.generatePairKey()};
+    std::vector<std::string> keyPair{ew.generateKeyPair()};
 
     // Test message encryption:
     const std::string plaintext{"Hello world from somewhere I don't know"};
@@ -61,10 +61,10 @@ int main(int argc, char* argv[])
     EncryptionWrapper ewB;      // Bob's Wrapper:
 
     // Generate Key pair for self:
-    std::vector<std::string> BobsKeypair{ewB.generatePairKey()};
+    std::vector<std::string> BobsKeypair{ewB.generateKeyPair()};
 
     // Generate Key pair for other person:
-    std::vector<std::string> AliceKeypair{ewA.generatePairKey()};
+    std::vector<std::string> AliceKeypair{ewA.generateKeyPair()};
 
     // Exhange public keys:
     std::string BobsPublicKey{BobsKeypair[1]};
@@ -97,6 +97,41 @@ int main(int argc, char* argv[])
     std::cout << BobPlainText << std::endl;
 
 #endif
+
+    std::cout << std::endl;
+
+    /* Error checking */
+    EncryptionWrapper dale;
+    EncryptionWrapper marry;
+
+    auto dalesKeys = dale.generateKeyPair();
+    auto marrysKeys = marry.generateKeyPair();
+
+    // Test case 1: marry uses in-correct symmetric key:
+    std::string pmsg1{"Mountain dew, shaken not stirred please."};
+    std::string cmsg1{dale.messageEncryption(pmsg1, marrysKeys[1])};
+
+    // marry get's dale encryption info:
+    auto daleInfo = dale.getEncryptionData();
+
+    //  dale's symmetric key get's corrupted or something happens to it and get's replaced:
+    for(auto& i: daleInfo->symmetricKey)
+        i = 9;
+
+    // marry set's dales information to friendly object to be decrypted:
+    marry.setEncryptionData(std::move(daleInfo));
+
+    try
+    {
+
+    // marry tries to decrypt cipher text:
+    std::string pmsg2{marry.messageDecryption(cmsg1, marrysKeys[0])};
+
+    }
+    catch(std::invalid_argument& exception)
+    {
+        std::cout << exception.what() << std::endl;
+    }
 
     return EXIT_SUCCESS;
 }
